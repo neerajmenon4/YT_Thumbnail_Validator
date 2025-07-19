@@ -29,7 +29,7 @@ app = FastAPI(title="ACTIVI Video Thumbnail Validator API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "https://yt-thumbnail-validator.vercel.app", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

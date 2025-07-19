@@ -98,7 +98,7 @@ export default function Home() {
       const formData = new FormData();
       formData.append("thumbnail", thumbnailFile);
 
-      const response = await fetch("http://localhost:8000/analyze-thumbnail/", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analyze-thumbnail/`, {
         method: "POST",
         body: formData,
       });
@@ -130,7 +130,7 @@ export default function Home() {
       formData.append("thumbnail", thumbnailFile);
       formData.append("logo", logoFile);
 
-      const response = await fetch("http://localhost:8000/detect-logo/", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/detect-logo/`, {
         method: "POST",
         body: formData,
       });
