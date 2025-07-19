@@ -50,6 +50,9 @@ async def analyze_thumbnail(thumbnail: UploadFile = File(...)):
             shutil.copyfileobj(thumbnail.file, buffer)
         
         try:
+            print(f"[DEBUG] Received file: {thumbnail.filename}")
+            print(f"[DEBUG] Saved file at {temp_path}")
+            print(f"[DEBUG] File size: {os.path.getsize(temp_path)} bytes")
             # Load and analyze the image
             cv_img, pil_img = image_analyzer.load_image(str(temp_path))
             
@@ -119,6 +122,9 @@ async def analyze_thumbnail(thumbnail: UploadFile = File(...)):
             return response_data
             
         except Exception as e:
+            import traceback
+            print("[ERROR] Exception in /analyze-thumbnail:")
+            print(traceback.format_exc())
             raise HTTPException(status_code=500, detail=f"Error analyzing thumbnail: {str(e)}")
 
 @app.post("/detect-logo/")
