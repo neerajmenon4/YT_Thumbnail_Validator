@@ -142,6 +142,12 @@ async def detect_logo(thumbnail: UploadFile = File(...), logo: UploadFile = File
             shutil.copyfileobj(logo.file, buffer)
         
         try:
+            print(f"[DEBUG] Received thumbnail file: {thumbnail.filename}")
+            print(f"[DEBUG] Saved thumbnail at {temp_thumbnail_path}")
+            print(f"[DEBUG] Thumbnail file size: {os.path.getsize(temp_thumbnail_path)} bytes")
+            print(f"[DEBUG] Received logo file: {logo.filename}")
+            print(f"[DEBUG] Saved logo at {temp_logo_path}")
+            print(f"[DEBUG] Logo file size: {os.path.getsize(temp_logo_path)} bytes")
             # Load images
             thumbnail_img, logo_img = logo_detector.load_images(
                 str(temp_thumbnail_path), 
@@ -179,6 +185,9 @@ async def detect_logo(thumbnail: UploadFile = File(...), logo: UploadFile = File
             return response_data
             
         except Exception as e:
+            import traceback
+            print("[ERROR] Exception in /detect-logo:")
+            print(traceback.format_exc())
             raise HTTPException(status_code=500, detail=f"Error detecting logo: {str(e)}")
 
 if __name__ == "__main__":
