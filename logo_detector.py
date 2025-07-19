@@ -66,54 +66,55 @@ def template_matching(thumbnail_img, logo_img):
     return max_val, max_loc, result, (w, h)
 
 
-def feature_matching(thumbnail_img, logo_img):
+def feature_matching(thumbnail_img, logo_img, method="ORB"):
     """
-    Perform feature matching to find the logo in the thumbnail.
+    Perform feature matching to find the logo in the thumbnail using ORB (default) or SIFT.
     
     Args:
         thumbnail_img (numpy.ndarray): Thumbnail image
         logo_img (numpy.ndarray): Logo image
-        
+        method (str): Feature detector to use ("ORB" or "SIFT")
+    
     Returns:
         tuple: (match_ratio, good_matches, keypoints) where match_ratio is the ratio of good matches,
                good_matches is the list of good matches, and keypoints are the detected keypoints
     """
-    # Initialize SIFT detector
-    sift = cv2.SIFT_create()
-    
     # Convert images to grayscale
     thumbnail_gray = cv2.cvtColor(thumbnail_img, cv2.COLOR_BGR2GRAY)
     logo_gray = cv2.cvtColor(logo_img, cv2.COLOR_BGR2GRAY)
-    
+
+    if method.upper() == "SIFT":
+        detector = cv2.SIFT_create()
+    else:
+        detector = cv2.ORB_create(nfeatures=1000)
+
     # Find keypoints and descriptors
-    kp1, des1 = sift.detectAndCompute(logo_gray, None)
-    kp2, des2 = sift.detectAndCompute(thumbnail_gray, None)
-    
+    kp1, des1 = detector.detectAndCompute(logo_gray, None)
+    kp2, des2 = detector.detectAndCompute(thumbnail_gray, None)
+
     # Check if keypoints were found
     if des1 is None or des2 is None or len(kp1) < 2 or len(kp2) < 2:
         return 0, [], (kp1, kp2, None)
-    
-    # FLANN parameters
-    FLANN_INDEX_KDTREE = 1
-    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-    search_params = dict(checks=50)
-    
-    # FLANN matcher
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
-    
-    # Match descriptors
-    matches = flann.knnMatch(des1, des2, k=2)
-    
-    # Apply ratio test to find good matches
-    good_matches = []
-    for m, n in matches:
-        if m.distance < 0.75 * n.distance:
-            good_matches.append(m)
-    
-    # Calculate match ratio
+
+    if method.upper() == "SIFT":
+        # FLANN parameters for SIFT
+        FLANN_INDEX_KDTREE = 1
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+        search_params = dict(checks=50)
+        matcher = cv2.FlannBasedMatcher(index_params, search_params)
+        matches = matcher.knnMatch(des1, des2, k=2)
+        # Apply ratio test
+        good_matches = [m for m, n in matches if m.distance < 0.75 * n.distance]
+    else:
+        # Brute Force matcher for ORB (Hamming distance)
+        matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+        matches = matcher.knnMatch(des1, des2, k=2)
+        # Apply ratio test
+        good_matches = [m for m, n in matches if m.distance < 0.75 * n.distance]
+
     match_ratio = len(good_matches) / max(len(kp1), 1)
-    
     return match_ratio, good_matches, (kp1, kp2, matches)
+
 
 
 def generate_logo_suggestions(results, thumbnail_img):
@@ -190,14 +191,15 @@ def generate_logo_suggestions(results, thumbnail_img):
     return suggestions
 
 
-def evaluate_logo_presence(thumbnail_img, logo_img):
+def evaluate_logo_presence(thumbnail_img, logo_img, feature_method="ORB"):
     """
     Evaluate if the logo is present in the thumbnail and how accurately.
     
     Args:
         thumbnail_img (numpy.ndarray): Thumbnail image
         logo_img (numpy.ndarray): Logo image
-        
+        feature_method (str): Feature detector to use for matching ("ORB" or "SIFT")
+    
     Returns:
         dict: Results containing presence information and accuracy scores
     """
@@ -212,7 +214,7 @@ def evaluate_logo_presence(thumbnail_img, logo_img):
     }
     
     # Perform feature matching
-    fm_ratio, fm_matches, (kp1, kp2, matches) = feature_matching(thumbnail_img, logo_img)
+    fm_ratio, fm_matches, (kp1, kp2, matches) = feature_matching(thumbnail_img, logo_img, method=feature_method)
     results['feature_matching'] = {
         'match_ratio': fm_ratio,
         'num_matches': len(fm_matches)
@@ -303,12 +305,13 @@ def visualize_results(thumbnail_img, logo_img, results):
 
 
 def main():
-    """Main function to run the logo detector."""
+    """Main function to run the logo detector. Supports ORB (default) or SIFT for feature matching."""
     parser = argparse.ArgumentParser(description='Detect logo in YouTube thumbnail')
     parser.add_argument('thumbnail', help='Path to the YouTube thumbnail image')
     parser.add_argument('logo', help='Path to the logo image')
     parser.add_argument('--output', '-o', help='Path to save the visualization result')
     parser.add_argument('--show', '-s', action='store_true', help='Show the visualization')
+    parser.add_argument('--feature-method', choices=["ORB", "SIFT"], default="ORB", help='Feature detection method to use (ORB or SIFT, default: ORB)')
     
     args = parser.parse_args()
     
@@ -317,7 +320,7 @@ def main():
         thumbnail_img, logo_img = load_images(args.thumbnail, args.logo)
         
         # Evaluate logo presence
-        results = evaluate_logo_presence(thumbnail_img, logo_img)
+        results = evaluate_logo_presence(thumbnail_img, logo_img, feature_method=args.feature_method)
         
         # Print results
         print(f"Logo presence: {'Detected' if results['is_present'] else 'Not detected'}")
