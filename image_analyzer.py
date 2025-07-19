@@ -191,6 +191,11 @@ def analyze_text_readability(pil_img):
     except Exception as e:
         return {
             'error': f"Text analysis failed: {str(e)}",
+            'detected_text': '',
+            'word_count': 0,
+            'is_concise': False,
+            'avg_word_length': 0,
+            'has_long_words': False,
             'readability_score': 'Unknown'
         }
 
