@@ -1,0 +1,13 @@
+opencv-python
+numpy
+matplotlib
+scikit-learn
+pytesseract
+Pillow
+uvicorn
+fastapi
+python-multipart
+python-dotenv
+pyyaml
+pydantic
+
