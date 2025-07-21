@@ -161,26 +161,26 @@ def analyze_text_readability(pil_img):
     Returns:
         dict: Results containing text readability information
     """
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("image_analyzer.text_readability")
+
     try:
-        # Extract text using OCR
+        logger.info("Starting OCR text extraction...")
         text = pytesseract.image_to_string(pil_img)
-        
-        # Count words and characters
+        logger.info(f"Extracted text: {text.strip()}")
+
         words = text.split()
         word_count = len(words)
         char_count = sum(len(word) for word in words)
-        
-        # Calculate average word length
         avg_word_length = char_count / max(word_count, 1)
-        
-        # Basic readability assessment
         is_concise = word_count <= 15  # Arbitrary threshold for conciseness
-        
-        # Check for very long words (potentially hard to read)
         long_words = [word for word in words if len(word) > 10]
         has_long_words = len(long_words) > 0
-        
-        return {
+
+        logger.info(f"Word count: {word_count}, Avg word length: {avg_word_length:.2f}, Is concise: {is_concise}, Has long words: {has_long_words}")
+
+        result = {
             'detected_text': text.strip(),
             'word_count': word_count,
             'is_concise': is_concise,
@@ -188,7 +188,10 @@ def analyze_text_readability(pil_img):
             'has_long_words': has_long_words,
             'readability_score': 'Good' if is_concise and not has_long_words else 'Could be improved'
         }
+        logger.info(f"Text readability result: {result}")
+        return result
     except Exception as e:
+        logger.error(f"Text analysis failed: {str(e)}")
         return {
             'error': f"Text analysis failed: {str(e)}",
             'detected_text': '',
