@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import shutil
@@ -23,6 +23,10 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 # Import the Python modules
 import image_analyzer
 import logo_detector
+
+# Import Gemini API module
+sys.path.append(str(Path(__file__).parent.parent))
+import gemini_api
 
 app = FastAPI(title="ACTIVI Video Thumbnail Validator API")
 
@@ -128,7 +132,12 @@ async def analyze_thumbnail(thumbnail: UploadFile = File(...)):
             raise HTTPException(status_code=500, detail=f"Error analyzing thumbnail: {str(e)}")
 
 @app.post("/detect-logo/")
-async def detect_logo(thumbnail: UploadFile = File(...), logo: UploadFile = File(...)):
+async def detect_logo(
+    thumbnail: UploadFile = File(...), 
+    logo: UploadFile = File(...),
+    use_gemini: bool = Form(False),
+    api_key: str = Form(None)
+):
     # Create a temporary directory to store the uploaded files
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_thumbnail_path = Path(temp_dir) / thumbnail.filename
@@ -148,17 +157,79 @@ async def detect_logo(thumbnail: UploadFile = File(...), logo: UploadFile = File
             print(f"[DEBUG] Received logo file: {logo.filename}")
             print(f"[DEBUG] Saved logo at {temp_logo_path}")
             print(f"[DEBUG] Logo file size: {os.path.getsize(temp_logo_path)} bytes")
-            # Load images
-            thumbnail_img, logo_img = logo_detector.load_images(
-                str(temp_thumbnail_path), 
-                str(temp_logo_path)
-            )
-            
-            # Evaluate logo presence
-            results = logo_detector.evaluate_logo_presence(thumbnail_img, logo_img)
-            
-            # Visualize results
-            vis_img = logo_detector.visualize_results(thumbnail_img, logo_img, results)
+            # Check if we should use Gemini API
+            if use_gemini:
+                print(f"[DEBUG] Using Gemini API for logo detection with API key: {'*****' if api_key else 'None'}")
+                
+                # Use Gemini API for detection
+                gemini_response = gemini_api.detect_logo_with_gemini(
+                    str(temp_thumbnail_path),
+                    str(temp_logo_path),
+                    api_key
+                )
+                
+                # Parse the JSON response from Gemini API
+                try:
+                    print(f"[DEBUG] Parsing Gemini API response: {gemini_response}")
+                    import json
+                    results = json.loads(gemini_response)
+                    
+                    # Ensure we have all required fields
+                    if not all(key in results for key in ["is_present", "accuracy", "accuracy_percentage", "suggestions"]):
+                        print(f"[ERROR] Missing required fields in Gemini API response")
+                        # Set default values for missing fields
+                        results.setdefault("is_present", False)
+                        results.setdefault("accuracy", 0.0)
+                        results.setdefault("accuracy_percentage", 0.0)
+                        results.setdefault("suggestions", [])
+                        results.setdefault("llm_response", gemini_response)
+                except Exception as e:
+                    print(f"[ERROR] Failed to parse Gemini API response: {str(e)}")
+                    # Create a default results dictionary if parsing fails
+                    results = {
+                        "is_present": False,
+                        "accuracy": 0.0,
+                        "accuracy_percentage": 0.0,
+                        "suggestions": ["Error parsing Gemini API response"],
+                        "llm_response": gemini_response,
+                        "error": str(e)
+                    }
+                
+                # Load images for visualization only
+                thumbnail_img, logo_img = logo_detector.load_images(
+                    str(temp_thumbnail_path), 
+                    str(temp_logo_path)
+                )
+                
+                # Create a simplified visualization for Gemini results
+                # Just draw a rectangle on the thumbnail to indicate detection
+                vis_img = thumbnail_img.copy()
+                h, w = vis_img.shape[:2]
+                if results["is_present"]:
+                    # Draw a green border around the image to indicate detection
+                    cv2.rectangle(vis_img, (0, 0), (w-1, h-1), (0, 255, 0), 10)
+                    cv2.putText(vis_img, f"Logo detected ({results['accuracy_percentage']:.1f}%)", 
+                                (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                else:
+                    # Draw a red border
+                    cv2.rectangle(vis_img, (0, 0), (w-1, h-1), (0, 0, 255), 10)
+                    cv2.putText(vis_img, "Logo not detected", 
+                                (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            else:
+                # Use traditional CV methods
+                print(f"[DEBUG] Using traditional CV methods for logo detection")
+                
+                # Load images
+                thumbnail_img, logo_img = logo_detector.load_images(
+                    str(temp_thumbnail_path), 
+                    str(temp_logo_path)
+                )
+                
+                # Evaluate logo presence
+                results = logo_detector.evaluate_logo_presence(thumbnail_img, logo_img)
+                
+                # Visualize results
+                vis_img = logo_detector.visualize_results(thumbnail_img, logo_img, results)
             
             # Convert visualization to base64
             _, buffer = cv2.imencode('.png', vis_img)
@@ -169,18 +240,29 @@ async def detect_logo(thumbnail: UploadFile = File(...), logo: UploadFile = File
                 "is_present": results["is_present"],
                 "accuracy": float(results["accuracy"]),
                 "accuracy_percentage": float(results["accuracy_percentage"]),
-                "template_matching": {
+                "suggestions": results["suggestions"],
+                "visualization": img_base64,
+                "detection_method": "gemini" if use_gemini else "traditional"
+            }
+            
+            # Add traditional CV specific data if not using Gemini
+            if not use_gemini:
+                response_data["template_matching"] = {
                     "score": float(results["template_matching"]["score"]),
                     "location": results["template_matching"]["location"],
                     "dimensions": results["template_matching"]["dimensions"]
-                },
-                "feature_matching": {
+                }
+                response_data["feature_matching"] = {
                     "match_ratio": float(results["feature_matching"]["match_ratio"]),
                     "num_matches": results["feature_matching"]["num_matches"]
-                },
-                "suggestions": results["suggestions"],
-                "visualization": img_base64
-            }
+                }
+            
+            # Add Gemini specific data if using Gemini
+            if use_gemini:
+                if "llm_response" in results:
+                    response_data["llm_response"] = results["llm_response"]
+                else:
+                    response_data["llm_response"] = gemini_response  # Use the raw response if parsed response doesn't have it
             
             return response_data
             

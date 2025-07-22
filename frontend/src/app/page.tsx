@@ -38,17 +38,19 @@ interface LogoDetectionResult {
   is_present: boolean;
   accuracy: number;
   accuracy_percentage: number;
-  template_matching: {
+  template_matching?: {
     score: number;
     location: [number, number];
     dimensions: [number, number];
   };
-  feature_matching: {
+  feature_matching?: {
     match_ratio: number;
     num_matches: number;
   };
   suggestions: string[];
   visualization: string;
+  detection_method?: string;
+  llm_response?: string;
 }
 
 export default function Home() {
@@ -60,6 +62,8 @@ export default function Home() {
   const [logoDetection, setLogoDetection] = useState<LogoDetectionResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [apiKey, setApiKey] = useState<string>("");
+  const [useGemini, setUseGemini] = useState<boolean>(false);
 
   const handleThumbnailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -124,11 +128,22 @@ export default function Home() {
       return;
     }
 
+    if (useGemini && !apiKey) {
+      toast.error("Please provide a Gemini API key to use Gemini detection");
+      return;
+    }
+
     setIsDetecting(true);
     try {
       const formData = new FormData();
       formData.append("thumbnail", thumbnailFile);
       formData.append("logo", logoFile);
+      formData.append("use_gemini", useGemini.toString());
+      
+      // Only append API key if using Gemini
+      if (useGemini && apiKey) {
+        formData.append("api_key", apiKey);
+      }
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/detect-logo/`, {
         method: "POST",
@@ -141,7 +156,7 @@ export default function Home() {
 
       const data = await response.json();
       setLogoDetection(data);
-      toast.success("Logo detection completed");
+      toast.success(`Logo detection completed using ${useGemini ? "Gemini AI" : "traditional CV"} method`);
     } catch (error) {
       console.error("Error detecting logo:", error);
       toast.error("Failed to detect logo");
@@ -248,6 +263,42 @@ export default function Home() {
                   </div>
                 </div>
               )}
+              
+              <div className="pt-4 border-t">
+                <h4 className="text-sm font-medium mb-3">Detection Options</h4>
+                
+                <div className="flex items-center space-x-2 mb-4">
+                  <input
+                    type="checkbox"
+                    id="useGemini"
+                    checked={useGemini}
+                    onChange={(e) => setUseGemini(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <label htmlFor="useGemini" className="text-sm">
+                    Use Gemini AI for detection
+                  </label>
+                </div>
+                
+                {useGemini && (
+                  <div className="flex flex-col space-y-2">
+                    <label htmlFor="apiKey" className="text-sm font-medium">
+                      Gemini API Key
+                    </label>
+                    <Input
+                      id="apiKey"
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="Enter your Gemini API key"
+                      className="font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Your API key is not stored and will be cleared on page refresh
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
           <CardFooter>
@@ -375,21 +426,44 @@ export default function Home() {
                           {logoDetection.is_present ? "Detected" : "Not Detected"}
                         </span>
                       </p>
-                      <p>Overall Accuracy: {(logoDetection.accuracy * 100).toFixed(1)}%</p>
+                      <p>Accuracy: {logoDetection.accuracy_percentage.toFixed(1)}%</p>
+                      <p>Detection Method: {logoDetection.detection_method === 'gemini' ? 'Gemini AI' : 'Traditional CV'}</p>
                     </div>
                   </div>
                   
-                  <div>
-                    <h4 className="text-md font-medium mb-2">Matching Scores</h4>
-                    <div className="space-y-1">
-                      <p>Template Matching: {(logoDetection.template_matching.score * 100).toFixed(1)}%</p>
-                      <p>Feature Matching: {(logoDetection.feature_matching.match_ratio * 100).toFixed(1)}%</p>
-                      <p>Feature Matches: {logoDetection.feature_matching.num_matches}</p>
+                  {logoDetection.detection_method === 'traditional' && logoDetection.template_matching && (
+                    <div className="mt-4">
+                      <h4 className="text-md font-medium mb-2">Template Matching</h4>
+                      <div className="space-y-1">
+                        <p>Score: {logoDetection.template_matching.score.toFixed(3)}</p>
+                        <p>Location: [{logoDetection.template_matching.location[0]}, {logoDetection.template_matching.location[1]}]</p>
+                        <p>Dimensions: {logoDetection.template_matching.dimensions[0]}x{logoDetection.template_matching.dimensions[1]}</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                
+                {logoDetection.detection_method === 'traditional' && logoDetection.feature_matching && (
+                    <div className="mt-4">
+                      <h4 className="text-md font-medium mb-2">Feature Matching</h4>
+                      <div className="space-y-1">
+                        <p>Match Ratio: {logoDetection.feature_matching.match_ratio.toFixed(3)}</p>
+                        <p>Number of Matches: {logoDetection.feature_matching.num_matches}</p>
+                      </div>
+                    </div>
+                  )}
+                
+                  {logoDetection.detection_method === 'gemini' && (
+                    <div className="mt-4">
+                      <h4 className="text-md font-medium mb-2">Gemini AI Detection</h4>
+                      <div className="space-y-1">
+                        <p>Method: Gemini AI Vision</p>
+                        <p>Confidence: {logoDetection.accuracy_percentage.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                  )}
                   
                   {logoDetection.suggestions && logoDetection.suggestions.length > 0 && (
-                    <div>
+                    <div className="mt-4">
                       <h4 className="text-md font-medium mb-2">Suggestions</h4>
                       <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
                         <ul className="list-disc list-inside space-y-1 text-amber-800">
